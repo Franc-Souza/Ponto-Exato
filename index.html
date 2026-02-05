@@ -1,0 +1,329 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<title>Ponto Exato – Entregas</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+
+<style>
+body { margin:0; font-family: Arial, sans-serif; background:#f2f2f2 }
+header { background:#0d47a1; color:#fff; padding:10px; text-align:center }
+#map { height:55vh }
+.controls {
+  display:flex; flex-wrap:wrap; gap:6px;
+  padding:8px; background:#fff
+}
+button {
+  padding:10px; border:none; border-radius:6px;
+  font-size:14px; cursor:pointer
+}
+.btn { background:#1976d2; color:#fff }
+.btn-green { background:#2e7d32; color:#fff }
+.btn-orange { background:#ef6c00; color:#fff }
+.list {
+  max-height:30vh; overflow:auto;
+  background:#fff; padding:8px
+}
+.item {
+  border-bottom:1px solid #ddd;
+  padding:6px; font-size:14px
+}
+.item.active { background:#e3f2fd }
+</style>
+</head>
+
+<body>
+
+<header>📦 Ponto Exato – Entregas</header>
+
+<div id="map"></div>
+
+<div class="controls">
+  <button class="btn" onclick="ativarGPS()">📡 GPS</button>
+  <button class="btn" onclick="buscarCEP()">🔎 Buscar CEP</button>
+  <button class="btn" onclick="adicionarEntrega()">📍 Nova entrega</button>
+  <button class="btn-green" onclick="falar('Sistema funcionando')">🔊 Testar voz</button>
+  <button class="btn-orange" onclick="limparTudo()">🗑 Limpar</button>
+
+</div>
+
+<div class="list" id="lista"></div>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
+<script>
+  /* ====== BLOQUEIO POR DISPOSITIVO ====== */
+  
+  // gera ou recupera ID único do dispositivo
+  function getDeviceId(){
+    let id = localStorage.getItem("device_id");
+    if(!id){
+      id = 'dev-' + Math.random().toString(36).substr(2,9);
+      localStorage.setItem("device_id", id);
+    }
+    return id;
+  }
+  
+  // lista de dispositivos liberados (VOCÊ edita)
+  const DISPOSITIVOS_LIBERADOS = [""
+    // EXEMPLO:
+    // "dev-ab123cd45"
+  ];
+  
+  // verifica acesso
+  (function verificarAcesso(){
+    const id = getDeviceId();
+  
+    if(!DISPOSITIVOS_LIBERADOS.includes(id)){
+      document.body.innerHTML = `
+        <div style="
+          height:100vh;
+          display:flex;
+          flex-direction:column;
+          align-items:center;
+          justify-content:center;
+          font-family:Arial;
+          text-align:center;
+          background:#f2f2f2;
+        ">
+          <h2>🔒 Acesso bloqueado</h2>
+          <p>Este aplicativo está vinculado a um único dispositivo.</p>
+          <p><strong>ID do dispositivo:</strong><br>${id}</p>
+          <p>Envie este código para liberação.</p>
+        </div>
+      `;
+      throw new Error("Dispositivo não autorizado");
+    }
+  })();
+  </script>
+  
+
+<script>
+/* ================= MAPA ================= */
+let map = L.map('map').setView([-15.78, -47.93], 4);
+L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+  attribution:'© OpenStreetMap'
+}).addTo(map);
+
+/* ================= LIMPAR TUDO ================= */
+function limparTudo(){
+  if(!confirm('Apagar todas as entregas?')) return;
+
+  markers.forEach(m => map.removeLayer(m));
+  markers = [];
+
+  if(rotaLinha){
+    map.removeLayer(rotaLinha);
+    rotaLinha = null;
+  }
+
+  entregas = [];
+  salvar();
+  atualizarLista();
+  falar('Tudo apagado');
+}
+
+
+/* ================= VOZ ================= */
+function falar(txt){
+  if(!('speechSynthesis' in window)) return;
+  speechSynthesis.cancel();
+  let msg = new SpeechSynthesisUtterance(txt);
+  msg.lang = 'pt-BR';
+  speechSynthesis.speak(msg);
+  
+  let avisouChegada = false;
+
+function falar(texto){
+  const msg = new SpeechSynthesisUtterance(texto);
+  msg.lang = 'pt-BR';
+  speechSynthesis.speak(msg);
+  }
+
+}
+
+function vibrar(ms){
+  if(navigator.vibrate){
+    navigator.vibrate(ms);
+  }
+
+}
+
+/* ================= FALAR DISTÂNCIA ================= */
+
+function falarDistancia(){
+  if(!gpsLatLng || !entregaSelecionada) return;
+
+  let d = map.distance(gpsLatLng, entregaSelecionada.latlng);
+
+  if(!ultimaDist || Math.abs(ultimaDist - d) > 100){
+    ultimaDist = d;
+    falar(`Faltam ${Math.round(d)} metros`);
+  }
+}
+
+
+/* ================= ESTADO ================= */
+let entregas = JSON.parse(localStorage.getItem('entregas')) || [];
+let markers = [];
+let rotaLinha = null;
+let gpsMarker = null;
+let ultimaDist = null;
+
+/* ================= SALVAR ================= */
+function salvar(){
+  localStorage.setItem('entregas', JSON.stringify(entregas));
+}
+
+/* ================= LISTA ================= */
+function atualizarLista(){
+  let lista = document.getElementById('lista');
+  lista.innerHTML = '';
+  entregas.forEach((e,i)=>{
+    let div = document.createElement('div');
+    div.className = 'item';
+    div.innerHTML = `${i+1}. ${e.nome}`;
+    div.onclick = ()=>selecionarEntrega(i);
+    lista.appendChild(div);
+  });
+}
+
+/* ================= ENTREGA ================= */
+function criarMarker(entrega){
+  let m = L.marker(entrega.latlng).addTo(map);
+  m.bindPopup(entrega.nome);
+  markers.push(m);
+}
+
+function adicionarEntrega(){
+  alert('Clique no mapa');
+  map.once('click', e=>{
+    let nome = prompt('Descrição da entrega');
+    if(!nome) return;
+    let ent = { nome, latlng:e.latlng };
+    entregas.push(ent);
+    criarMarker(ent);
+    salvar();
+    atualizarLista();
+    falar('Entrega adicionada');
+  });
+}
+
+function selecionarEntrega(i){
+  let e = entregas[i];
+  map.setView(e.latlng, 16);
+  desenharRota(e.latlng);
+  falar('Entrega selecionada');
+}
+
+/* ================= ROTA SIMPLES ================= */
+function desenharRota(destino){
+  if(!gpsMarker) return;
+  if(rotaLinha) map.removeLayer(rotaLinha);
+  rotaLinha = L.polyline(
+    [gpsMarker.getLatLng(), destino],
+    { color:'blue', weight:4 }
+  ).addTo(map);
+}
+
+/* ================= GPS ================= */
+function ativarGPS(){
+  if(!navigator.geolocation){
+    alert('GPS não suportado');
+    return;
+  }
+  navigator.geolocation.watchPosition(pos=>{
+    let latlng = [pos.coords.latitude, pos.coords.longitude];
+    if(!gpsMarker){
+      gpsMarker = L.circleMarker(latlng,{
+        radius:8, color:'#000', fillColor:'#2196f3', fillOpacity:1
+      }).addTo(map);
+      map.setView(latlng, 16);
+      falar('GPS ativado');
+    } else {
+      gpsMarker.setLatLng(latlng);
+      gpsWatch = navigator.geolocation.watchPosition(pos=>{
+  gpsLatLng = [pos.coords.latitude, pos.coords.longitude];
+
+  gpsMarker.setLatLng(gpsLatLng);
+  atualizarRotaGPS();
+});
+
+    }
+  },()=>alert('Erro no GPS'),{ enableHighAccuracy:true });
+}
+
+/* ================= ATUALIZAR ROTA GPS ================= */
+function atualizarRotaGPS(){
+  if(!gpsLatLng || !entregaSelecionada) return;
+
+  if(rotaLinha) map.removeLayer(rotaLinha);
+
+  rotaLinha = L.polyline(
+    [gpsLatLng, entregaSelecionada.latlng],
+    { color:'blue', weight:5 }
+  ).addTo(map);
+  // AVISO DE CHEGADA
+let distancia = map.distance(gpsLatLng, destino);
+
+if(distancia < 200 && !avisou200){
+  falar('Faltam duzentos metros');
+  vibrar(200);
+  avisou200 = true;
+}
+
+
+if(distancia < 100 && !avisou100){
+  falar('Faltam cem metros');
+  vibrar([100,50,100]);
+  avisou100 = true;
+}
+
+if(distancia < 50 && !avisou50){
+  falar('Você está chegando ao local');
+  vibrar([300,100,300]);
+  avisou50 = true;
+}
+
+}
+
+
+/* ================= CEP ================= */
+async function buscarCEP(){
+  let cep = prompt('Digite o CEP');
+  if(!cep) return;
+  cep = cep.replace(/\D/g,'');
+  if(cep.length!==8){ alert('CEP inválido'); return; }
+
+  let r = await fetch(`https://viacep.com.br/ws/${cep}/json/`);
+  let d = await r.json();
+  if(d.erro){ alert('CEP não encontrado'); return; }
+
+  let endereco = `${d.logradouro}, ${d.localidade} - ${d.uf}`;
+  let g = await fetch(
+    `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(endereco)}`
+  );
+  let geo = await g.json();
+  if(!geo.length){ alert('Local não encontrado'); return; }
+
+  let latlng = [geo[0].lat, geo[0].lon];
+  map.setView(latlng, 16);
+
+  if(confirm('Salvar como entrega?')){
+    entregas.push({ nome:endereco, latlng });
+    criarMarker({ latlng });
+    salvar();
+    atualizarLista();
+    falar('Entrega salva pelo CEP');
+  }
+}
+
+/* ================= INIT ================= */
+entregas.forEach(criarMarker);
+atualizarLista();
+</script>
+
+</body>
+</html>

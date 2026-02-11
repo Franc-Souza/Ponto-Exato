@@ -2,50 +2,38 @@
 <html lang="pt-BR">
 <head>
 <meta charset="UTF-8">
-<title>Ponto Exato – Entregas</title>
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Ponto Exato – Entregas</title>
 
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
 
 <style>
-body { margin:0; font-family: Arial, sans-serif; background:#f2f2f2 }
-header { background:#0d47a1; color:#fff; padding:10px; text-align:center }
-#map { height:55vh }
-.controls {
-  display:flex; flex-wrap:wrap; gap:6px;
-  padding:8px; background:#fff
-}
-button {
-  padding:10px; border:none; border-radius:6px;
-  font-size:14px; cursor:pointer
-}
-.btn { background:#1976d2; color:#fff }
-.btn-green { background:#2e7d32; color:#fff }
-.btn-orange { background:#ef6c00; color:#fff }
-.list {
-  max-height:30vh; overflow:auto;
-  background:#fff; padding:8px
-}
-.item {
-  border-bottom:1px solid #ddd;
-  padding:6px; font-size:14px
-}
-.item.active { background:#e3f2fd }
+body{margin:0;font-family:Arial;background:#f2f2f2}
+header{background:#0d47a1;color:#fff;padding:10px;text-align:center}
+#map{height:55vh}
+.controls{display:flex;flex-wrap:wrap;gap:6px;padding:8px;background:#fff}
+button{padding:10px;border:none;border-radius:6px;font-size:14px}
+.btn{background:#1976d2;color:#fff}
+.btn-green{background:#2e7d32;color:#fff}
+.btn-orange{background:#ef6c00;color:#fff}
+.list{max-height:30vh;overflow:auto;background:#fff;padding:8px}
+.item{padding:6px;border-bottom:1px solid #ddd}
+.item.active{background:#e3f2fd}
 </style>
 </head>
 
 <body>
 
 <header>📦 Ponto Exato – Entregas</header>
-
 <div id="map"></div>
 
 <div class="controls">
   <button class="btn" onclick="ativarGPS()">📡 GPS</button>
-  <button class="btn" onclick="buscarCEP()">🔎 Buscar CEP</button>
-  <button class="btn" onclick="adicionarEntrega()">📍 Nova entrega</button>
-  <button class="btn-green" onclick="falar('Sistema funcionando')">🔊 Testar voz</button>
+  <button class="btn" onclick="buscarCEP()">🔎 CEP</button>
+  <button class="btn" onclick="novaEntrega()">📍 Nova</button>
+  <button class="btn-green" onclick="falar('Sistema funcionando')">🔊 Voz</button>
   <button class="btn-orange" onclick="limparTudo()">🗑 Limpar</button>
+  <button class="btn-orange" onclick="limparRota()">🧹 Limpar rota</button>
 
 </div>
 
@@ -54,273 +42,222 @@ button {
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 
 <script>
-  /* ====== BLOQUEIO POR DISPOSITIVO ====== */
-  
-  // gera ou recupera ID único do dispositivo
-  function getDeviceId(){
-    let id = localStorage.getItem("device_id");
-    if(!id){
-      id = 'dev-' + Math.random().toString(36).substr(2,9);
-      localStorage.setItem("device_id", id);
-    }
-    return id;
-  }
-  
-  // lista de dispositivos liberados (VOCÊ edita)
-  const DISPOSITIVOS_LIBERADOS = ["dev-urwizxgom"
-    // EXEMPLO:
-    // "dev-ab123cd45"
-  ];
-  
-  // verifica acesso
-  (function verificarAcesso(){
-    const id = getDeviceId();
-  
-    if(!DISPOSITIVOS_LIBERADOS.includes(id)){
-      document.body.innerHTML = `
-        <div style="
-          height:100vh;
-          display:flex;
-          flex-direction:column;
-          align-items:center;
-          justify-content:center;
-          font-family:Arial;
-          text-align:center;
-          background:#f2f2f2;
-        ">
-          <h2>🔒 Acesso bloqueado</h2>
-          <p>Este aplicativo está vinculado a um único dispositivo.</p>
-          <p><strong>ID do dispositivo:</strong><br>${id}</p>
-          <p>Envie este código para liberação.</p>
-        </div>
-      `;
-      throw new Error("Dispositivo não autorizado");
-    }
-  })();
-  </script>
-  
-
-<script>
-/* ================= MAPA ================= */
-let map = L.map('map').setView([-15.78, -47.93], 4);
-L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+// ================= MAPA =================
+const map = L.map('map').setView([-15.78,-47.93],5);
+L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{
   attribution:'© OpenStreetMap'
 }).addTo(map);
 
-/* ================= LIMPAR TUDO ================= */
-function limparTudo(){
-  if(!confirm('Apagar todas as entregas?')) return;
+// ================= ESTADO =================
+let entregas = JSON.parse(localStorage.getItem('entregas')) || [];
+let entregaAtiva = null;
+let gpsLatLng = null;
+let gpsMarker = null;
+let rotaLinha = null;
+let avisos = {};
+let markers = [];
 
-  markers.forEach(m => map.removeLayer(m));
-  markers = [];
-
-  if(rotaLinha){
-    map.removeLayer(rotaLinha);
-    rotaLinha = null;
-  }
-
-  entregas = [];
-  salvar();
-  atualizarLista();
-  falar('Tudo apagado');
-}
-
-
-/* ================= VOZ ================= */
+// ================= VOZ =================
 function falar(txt){
   if(!('speechSynthesis' in window)) return;
   speechSynthesis.cancel();
-  let msg = new SpeechSynthesisUtterance(txt);
+  const msg = new SpeechSynthesisUtterance(txt);
   msg.lang = 'pt-BR';
   speechSynthesis.speak(msg);
-  
-  let avisouChegada = false;
-
-function falar(texto){
-  const msg = new SpeechSynthesisUtterance(texto);
-  msg.lang = 'pt-BR';
-  speechSynthesis.speak(msg);
-  }
-
 }
 
-function vibrar(ms){
-  if(navigator.vibrate){
-    navigator.vibrate(ms);
-  }
+// ================= VIBRAÇÃO =================
+function vibrar(p){ if(navigator.vibrate) navigator.vibrate(p); }
 
-}
-
-/* ================= FALAR DISTÂNCIA ================= */
-
-function falarDistancia(){
-  if(!gpsLatLng || !entregaSelecionada) return;
-
-  let d = map.distance(gpsLatLng, entregaSelecionada.latlng);
-
-  if(!ultimaDist || Math.abs(ultimaDist - d) > 100){
-    ultimaDist = d;
-    falar(`Faltam ${Math.round(d)} metros`);
-  }
-}
-
-
-/* ================= ESTADO ================= */
-let entregas = JSON.parse(localStorage.getItem('entregas')) || [];
-let markers = [];
-let rotaLinha = null;
-let gpsMarker = null;
-let ultimaDist = null;
-
-/* ================= SALVAR ================= */
+// ================= SALVAR =================
 function salvar(){
   localStorage.setItem('entregas', JSON.stringify(entregas));
 }
 
-/* ================= LISTA ================= */
+// ================= LISTA =================
 function atualizarLista(){
-  let lista = document.getElementById('lista');
-  lista.innerHTML = '';
+  const l = document.getElementById('lista');
+  l.innerHTML='';
   entregas.forEach((e,i)=>{
-    let div = document.createElement('div');
-    div.className = 'item';
-    div.innerHTML = `${i+1}. ${e.nome}`;
-    div.onclick = ()=>selecionarEntrega(i);
-    lista.appendChild(div);
+    const d = document.createElement('div');
+    d.className='item'+(entregaAtiva===e?' active':'');
+
+    d.innerHTML = `
+      ${i+1}. ${e.nome}
+      <button style="float:right"
+        onclick="removerEntrega(${i});event.stopPropagation()">🗑</button>
+    `;
+
+    d.onclick=()=>selecionarEntrega(i);
+    l.appendChild(d);
   });
 }
 
-/* ================= ENTREGA ================= */
-function criarMarker(entrega){
-  let m = L.marker(entrega.latlng).addTo(map);
-  m.bindPopup(entrega.nome);
+
+// ================= MARCADOR =================
+function criarMarker(ent){
+  const m = L.marker(ent.latlng,{draggable:true}).addTo(map);
+  m.on('dragend',e=>{
+    ent.latlng = e.target.getLatLng();
+    salvar();
+    atualizarRota();
+  });
   markers.push(m);
 }
 
-function adicionarEntrega(){
+// ================= ENTREGA =================
+function novaEntrega(){
   alert('Clique no mapa');
-  map.once('click', e=>{
-    let nome = prompt('Descrição da entrega');
+  map.once('click',e=>{
+    const nome = prompt('Descrição da entrega');
     if(!nome) return;
-    let ent = { nome, latlng:e.latlng };
+    const ent = {nome, latlng:e.latlng};
     entregas.push(ent);
     criarMarker(ent);
     salvar();
     atualizarLista();
-    falar('Entrega adicionada');
+    falar('Entrega criada');
   });
 }
 
 function selecionarEntrega(i){
-  let e = entregas[i];
-  map.setView(e.latlng, 16);
-  desenharRota(e.latlng);
+  entregaAtiva = entregas[i];
+  avisos = {};
+  map.setView(entregaAtiva.latlng,16);
+  atualizarLista();
+  atualizarRota();
   falar('Entrega selecionada');
 }
 
-/* ================= ROTA SIMPLES ================= */
-function desenharRota(destino){
-  if(!gpsMarker) return;
-  if(rotaLinha) map.removeLayer(rotaLinha);
-  rotaLinha = L.polyline(
-    [gpsMarker.getLatLng(), destino],
-    { color:'blue', weight:4 }
-  ).addTo(map);
-}
+// ================= ROTA =================
+function atualizarRota(){
+  if(!gpsLatLng || !entregaAtiva) return;
 
-/* ================= GPS ================= */
-function ativarGPS(){
-  if(!navigator.geolocation){
-    alert('GPS não suportado');
-    return;
+  if(rotaLinha) map.removeLayer(rotaLinha);
+
+  rotaLinha = L.polyline(
+    [gpsLatLng, entregaAtiva.latlng],
+    {color:'#2196f3',weight:5}
+  ).addTo(map);
+
+  const d = map.distance(gpsLatLng, entregaAtiva.latlng);
+
+  if(d<200 && !avisos['200']){
+    falar('Faltam duzentos metros');
+    vibrar(200); avisos['200']=true;
   }
+  if(d<100 && !avisos['100']){
+    falar('Faltam cem metros');
+    vibrar([100,50,100]); avisos['100']=true;
+  }
+  if(d<30 && !avisos['fim']){
+    falar('Você chegou ao destino');
+    vibrar([300,100,300]); avisos['fim']=true;
+  }
+}
+
+// ================= Limpar Somente Rota =================
+function limparRota(){
+  if(rotaLinha){
+    map.removeLayer(rotaLinha);
+    rotaLinha = null;
+  }
+  entregaAtiva = null;
+  avisos = {};
+  falar('Rota limpa');
+}
+
+
+// ================= GPS =================
+function ativarGPS(){
+  if(!navigator.geolocation) return alert('GPS não suportado');
+
   navigator.geolocation.watchPosition(pos=>{
-    let latlng = [pos.coords.latitude, pos.coords.longitude];
+    gpsLatLng = [pos.coords.latitude,pos.coords.longitude];
+
     if(!gpsMarker){
-      gpsMarker = L.circleMarker(latlng,{
-        radius:8, color:'#000', fillColor:'#2196f3', fillOpacity:1
+      gpsMarker = L.circleMarker(gpsLatLng,{
+        radius:8,color:'#000',fillColor:'#2196f3',fillOpacity:1
       }).addTo(map);
-      map.setView(latlng, 16);
+      map.setView(gpsLatLng,16);
       falar('GPS ativado');
-    } else {
-      gpsMarker.setLatLng(latlng);
-      gpsWatch = navigator.geolocation.watchPosition(pos=>{
-  gpsLatLng = [pos.coords.latitude, pos.coords.longitude];
-
-  gpsMarker.setLatLng(gpsLatLng);
-  atualizarRotaGPS();
-});
-
+    }else{
+      gpsMarker.setLatLng(gpsLatLng);
+      map.setView(gpsLatLng,map.getZoom(),{animate:true});
     }
-  },()=>alert('Erro no GPS'),{ enableHighAccuracy:true });
+
+    atualizarRota();
+  },
+  ()=>alert('Erro no GPS'),
+  {enableHighAccuracy:true});
 }
 
-/* ================= ATUALIZAR ROTA GPS ================= */
-function atualizarRotaGPS(){
-  if(!gpsLatLng || !entregaSelecionada) return;
-
-  if(rotaLinha) map.removeLayer(rotaLinha);
-
-  rotaLinha = L.polyline(
-    [gpsLatLng, entregaSelecionada.latlng],
-    { color:'blue', weight:5 }
-  ).addTo(map);
-  // AVISO DE CHEGADA
-let distancia = map.distance(gpsLatLng, destino);
-
-if(distancia < 200 && !avisou200){
-  falar('Faltam duzentos metros');
-  vibrar(200);
-  avisou200 = true;
-}
-
-
-if(distancia < 100 && !avisou100){
-  falar('Faltam cem metros');
-  vibrar([100,50,100]);
-  avisou100 = true;
-}
-
-if(distancia < 50 && !avisou50){
-  falar('Você está chegando ao local');
-  vibrar([300,100,300]);
-  avisou50 = true;
-}
-
-}
-
-
-/* ================= CEP ================= */
+// ================= CEP =================
 async function buscarCEP(){
   let cep = prompt('Digite o CEP');
   if(!cep) return;
   cep = cep.replace(/\D/g,'');
-  if(cep.length!==8){ alert('CEP inválido'); return; }
+  if(cep.length!==8) return alert('CEP inválido');
 
-  let r = await fetch(`https://viacep.com.br/ws/${cep}/json/`);
-  let d = await r.json();
-  if(d.erro){ alert('CEP não encontrado'); return; }
+  const r = await fetch(`https://viacep.com.br/ws/${cep}/json/`);
+  const d = await r.json();
+  if(d.erro) return alert('CEP não encontrado');
 
-  let endereco = `${d.logradouro}, ${d.localidade} - ${d.uf}`;
-  let g = await fetch(
+  const endereco = `${d.logradouro}, ${d.localidade} - ${d.uf}`;
+  const g = await fetch(
     `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(endereco)}`
   );
-  let geo = await g.json();
-  if(!geo.length){ alert('Local não encontrado'); return; }
+  const geo = await g.json();
+  if(!geo.length) return alert('Local não encontrado');
 
-  let latlng = [geo[0].lat, geo[0].lon];
-  map.setView(latlng, 16);
+  const latlng = [parseFloat(geo[0].lat),parseFloat(geo[0].lon)];
+  map.setView(latlng,16);
 
-  if(confirm('Salvar como entrega?')){
-    entregas.push({ nome:endereco, latlng });
-    criarMarker({ latlng });
+  if(confirm('Salvar entrega?')){
+    const ent={nome:endereco,latlng};
+    entregas.push(ent);
+    criarMarker(ent);
     salvar();
     atualizarLista();
-    falar('Entrega salva pelo CEP');
+    falar('Entrega adicionada. Ajuste o ponto se necessário');
   }
 }
 
-/* ================= INIT ================= */
+// ================= LIMPAR =================
+function limparTudo(){
+  if(!confirm('Apagar tudo?')) return;
+  markers.forEach(m=>map.removeLayer(m));
+  if(rotaLinha) map.removeLayer(rotaLinha);
+  entregas=[]; entregaAtiva=null;
+  markers=[]; rotaLinha=null;
+  salvar(); atualizarLista();
+  falar('Tudo apagado');
+}
+
+// ================= Remover Entrega =================
+function removerEntrega(i){
+  if(!confirm('Remover esta entrega?')) return;
+
+  const removida = entregas[i];
+
+  map.removeLayer(markers[i]);
+  markers.splice(i,1);
+  entregas.splice(i,1);
+
+  if(entregaAtiva === removida){
+    entregaAtiva = null;
+    if(rotaLinha){
+      map.removeLayer(rotaLinha);
+      rotaLinha = null;
+    }
+  }
+
+  salvar();
+  atualizarLista();
+  falar('Entrega removida');
+}
+
+// ================= INIT =================
 entregas.forEach(criarMarker);
 atualizarLista();
 </script>

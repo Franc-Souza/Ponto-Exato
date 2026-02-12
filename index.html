@@ -39,6 +39,7 @@ button{padding:10px;border:none;border-radius:6px;font-size:14px}
   <button class="btn-orange" onclick="limparTudo()">🗑 Limpar</button>
   <button class="btn-orange" onclick="limparRota()">🧹 Limpar rota</button>
   <button class="btn" onclick="centralizarGPS()">🎯 GPS</button>
+  <button onclick="logout()">🚪 Sair</button>
 
 
 </div>
@@ -48,10 +49,18 @@ button{padding:10px;border:none;border-radius:6px;font-size:14px}
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 
 <script>
+  
 // ================= Login Check =================
 if(localStorage.getItem('logado') !== 'sim'){
   window.location.href = 'login.html';
 }
+// ================= Logout =================
+function logout(){
+  if(!confirm('Deseja sair?')) return;
+  localStorage.removeItem('logado');
+  window.location.href = 'login.html';
+}
+
 
 // ================= MAPA =================
 const map = L.map('map').setView([-15.78,-47.93],5);

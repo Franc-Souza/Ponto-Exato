@@ -26,6 +26,7 @@ button{padding:10px;border:none;border-radius:6px;font-size:14px}
 </style>
 </head>
 
+
 <body>
 
 <header>📦 Ponto Exato – Entregas</header>
@@ -40,6 +41,12 @@ button{padding:10px;border:none;border-radius:6px;font-size:14px}
   <button class="btn-orange" onclick="limparRota()">🧹 Limpar rota</button>
   <button class="btn" onclick="centralizarGPS()">🎯 GPS</button>
   <button onclick="logout()">🚪 Sair</button>
+  <button class="btn" onclick="abrirNoGoogleMaps()">
+    🗺 Google Maps
+  </button>
+  <button class="btn" onclick="abrirSequenciaNoGoogleMaps()">🧭 Rota completa</button>
+
+  
 
 
 </div>
@@ -49,7 +56,54 @@ button{padding:10px;border:none;border-radius:6px;font-size:14px}
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 
 <script>
-  
+// ================= Abrir outro mapa =================  
+  function abrirNoGoogleMaps(){
+  if(!gpsLatLng || !entregaAtiva){
+    alert('Ative o GPS e selecione uma entrega');
+    return;
+  }
+
+  const origem = `${gpsLatLng[0]},${gpsLatLng[1]}`;
+  const destino = `${entregaAtiva.latlng.lat},${entregaAtiva.latlng.lng}`;
+
+  const url = `https://www.google.com/maps/dir/?api=1&origin=${origem}&destination=${destino}&travelmode=driving`;
+
+  window.open(url, '_blank');
+}
+
+// ================= Abrir sequência GoogleMaps =================  
+function abrirSequenciaNoGoogleMaps(){
+  if(!gpsLatLng || entregas.length === 0){
+    alert('Ative o GPS e tenha entregas salvas');
+    return;
+  }
+
+  const origem = `${gpsLatLng[0]},${gpsLatLng[1]}`;
+
+  // última entrega
+  const destinoObj = entregas[entregas.length - 1];
+  const destino = `${destinoObj.latlng.lat},${destinoObj.latlng.lng}`;
+
+  // intermediárias
+  const waypoints = entregas
+    .slice(0, -1)
+    .map(e => `${e.latlng.lat},${e.latlng.lng}`)
+    .join('|');
+
+  let url =
+    `https://www.google.com/maps/dir/?api=1` +
+    `&origin=${origem}` +
+    `&destination=${destino}` +
+    `&travelmode=driving`;
+
+  if(waypoints){
+    url += `&waypoints=${waypoints}`;
+  }
+
+  window.open(url, '_blank');
+}
+
+
 // ================= Login Check =================
 if(localStorage.getItem('logado') !== 'sim'){
   window.location.href = 'login.html';
@@ -312,10 +366,11 @@ if ("serviceWorker" in navigator) {
 <script>
   if ('serviceWorker' in navigator) {
     navigator.serviceWorker.register('./sw.js')
-      .then(() => console.log('SW registrado'))
-      .catch(err => console.error('SW erro', err));
+      .then(() => console.log('SW OK'))
+      .catch(err => console.error(err));
   }
   </script>
+  
   
 </body>
 </html>

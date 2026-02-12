@@ -5,6 +5,10 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Ponto Exato – Entregas</title>
 
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#0d47a1">
+
+
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
 
 <style>
@@ -34,6 +38,8 @@ button{padding:10px;border:none;border-radius:6px;font-size:14px}
   <button class="btn-green" onclick="falar('Sistema funcionando')">🔊 Voz</button>
   <button class="btn-orange" onclick="limparTudo()">🗑 Limpar</button>
   <button class="btn-orange" onclick="limparRota()">🧹 Limpar rota</button>
+  <button class="btn" onclick="centralizarGPS()">🎯 GPS</button>
+
 
 </div>
 
@@ -42,6 +48,11 @@ button{padding:10px;border:none;border-radius:6px;font-size:14px}
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 
 <script>
+// ================= Login Check =================
+if(localStorage.getItem('logado') !== 'sim'){
+  window.location.href = 'login.html';
+}
+
 // ================= MAPA =================
 const map = L.map('map').setView([-15.78,-47.93],5);
 L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{
@@ -169,6 +180,8 @@ function limparRota(){
 
 
 // ================= GPS =================
+let gpsCentralizado = false;
+
 function ativarGPS(){
   if(!navigator.geolocation) return alert('GPS não suportado');
 
@@ -177,20 +190,40 @@ function ativarGPS(){
 
     if(!gpsMarker){
       gpsMarker = L.circleMarker(gpsLatLng,{
-        radius:8,color:'#000',fillColor:'#2196f3',fillOpacity:1
+        radius:8,
+        color:'#000',
+        fillColor:'#2196f3',
+        fillOpacity:1
       }).addTo(map);
-      map.setView(gpsLatLng,16);
+
+      if(!gpsCentralizado){
+        map.setView(gpsLatLng,16);
+        gpsCentralizado = true;
+      }
+
       falar('GPS ativado');
     }else{
       gpsMarker.setLatLng(gpsLatLng);
-      map.setView(gpsLatLng,map.getZoom(),{animate:true});
+      
+      if(entregaAtiva){
+  map.panTo(gpsLatLng,{animate:true});
+}
+
     }
 
     atualizarRota();
   },
   ()=>alert('Erro no GPS'),
-  {enableHighAccuracy:true});
+  { enableHighAccuracy:true });
 }
+
+// =================Centralizar GPS =================
+function centralizarGPS(){
+  if(gpsLatLng){
+    map.setView(gpsLatLng,16,{animate:true});
+  }
+}
+
 
 // ================= CEP =================
 async function buscarCEP(){
@@ -260,6 +293,10 @@ function removerEntrega(i){
 // ================= INIT =================
 entregas.forEach(criarMarker);
 atualizarLista();
+
+if ("serviceWorker" in navigator) {
+  navigator.serviceWorker.register("service-worker.js");
+}
 </script>
 
 </body>

@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Login – Ponto Exato</title>
+<style>
+body{
+  display:flex;
+  justify-content:center;
+  align-items:center;
+  height:100vh;
+  font-family:Arial;
+  background:#0d47a1;
+}
+.box{
+  background:#fff;
+  padding:20px;
+  border-radius:8px;
+  width:280px;
+  text-align:center;
+}
+input,button{
+  width:100%;
+  padding:10px;
+  margin-top:10px;
+}
+button{
+  background:#1976d2;
+  color:#fff;
+  border:none;
+}
+</style>
+</head>
+<body>
+
+<div class="box">
+  <h3>🔐 Login</h3>
+  <input id="user" placeholder="Usuário">
+  <input id="pass" type="password" placeholder="Senha">
+  <button onclick="login()">Entrar</button>
+  <p id="msg"></p>
+</div>
+
+<script>
+function login(){
+  const u = document.getElementById('user').value;
+  const p = document.getElementById('pass').value;
+
+  // 🔒 você controla isso
+  if(u === 'admin' && p === '1234'){
+    localStorage.setItem('logado','sim');
+    window.location.href = 'index.html';
+  }else{
+    document.getElementById('msg').innerText='Dados inválidos';
+  }
+}
+</script>
+
+</body>
+</html>
